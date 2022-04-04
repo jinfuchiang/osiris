@@ -406,16 +406,20 @@ void Executor::ClearDataPage() {
 }
 
 void Executor::InitializeCodePage(int codepage_no) {
-  constexpr char INST_RET = '\xc3';
-  constexpr char INST_NOP = '\x90';
-
+  constexpr char INST_RET[] = "\xc0\x03\x5f\xd6";
+  constexpr char INST_NOP[] = "\x1f\x20\x03\xd5";
   assert(codepage_no < static_cast<int>(execution_code_pages_.size()));
-  memset(execution_code_pages_[codepage_no], INST_NOP, kPagesize);
+  // memset(execution_code_pages_[codepage_no], INST_NOP, kPagesize);
+  code_pages_last_written_index_[codepage_no] = 0;
+  for (size_t i = 0; i < kPagesize-4; i+=4)
+  {
+    AddInstructionToCodePage(codepage_no, INST_NOP, 4);
+  }
 
   // add RET as last instruction (even though AddEpilog adds a RET it could happen that a
   // jump skips it)
-  execution_code_pages_[codepage_no][kPagesize - 1] = INST_RET;
-
+  // execution_code_pages_[codepage_no][kPagesize - 1] = INST_RET;
+  AddInstructionToCodePage(codepage_no, INST_RET, 4);
   // reset index to write
   code_pages_last_written_index_[codepage_no] = 0;
 }
@@ -570,7 +574,8 @@ void Executor::AddInstructionToCodePage(int codepage_no,
                                           const char* instruction_bytes,
                                           size_t instruction_length) {
   size_t page_idx = code_pages_last_written_index_[codepage_no];
-  if (page_idx + instruction_length >= kPagesize) {
+  // page_idx == kPageSize means code page is full
+  if (page_idx + instruction_length > kPagesize) {
     std::stringstream sstream;
     sstream << "Problematic code page is at address 0x"
             << std::hex << reinterpret_cast<int64_t>(execution_code_pages_[codepage_no]);
