@@ -240,14 +240,15 @@ void Executor::CreateResetTestrunCode(int codepage_no, const byte_array& trigger
   // prolog
   AddProlog(codepage_no);
   AddInstructionToCodePage(codepage_no, trigger_sequence);
-  AddSerializeInstructionToCodePage(codepage_no);
+
+  AddSerializePrologToCodePage(codepage_no);
 
   // try to reset microarchitectural state again
   assert(reset_executions_amount <= 100);  // else we need to increase guardian stack space
   for (int i = 0; i < reset_executions_amount; i++) {
     AddInstructionToCodePage(codepage_no, reset_sequence);
   }
-  AddSerializeInstructionToCodePage(codepage_no);
+  AddSerializeEpilogToCodePage(codepage_no);
 
   // time measurement sequence
   AddTimerStartToCodePage(codepage_no);
@@ -426,68 +427,49 @@ void Executor::InitializeCodePage(int codepage_no) {
 
 void Executor::AddProlog(int codepage_no) {
   // NOTE: everything in this function must be mirrored by AddEpilog
-  constexpr char INST_PUSH_RBX_RSP_RBP[] = "\x53\x54\x55";
-  constexpr char INST_PUSH_R12_R13_R14_R15[] = "\x41\x54\x41\x55\x41\x56\x41\x57";
-  constexpr char INST_SUB_RSP_0x8[] = "\x48\x83\xec\x08";
-  constexpr char INST_STMXCSR_RSP[] = "\x0f\xae\x1c\x24";
-  constexpr char INST_FSTCW_RSP[] = "\x9b\xd9\x3c\x24";
-  constexpr char INST_MOV_RBP_RSP[] = "\x48\x89\xe5";
-  constexpr char INST_SUB_RSP_0x1000[] = "\x48\x81\xec\x00\x10\x00\x00";
+  constexpr char INST_PUSH_XRIGISTER[] = "\xe0\x07\xbf\xa9\xe2\x0f\xbf\xa9\xe4\x17\xbf\xa9\xe6\x1f\xbf\xa9\xe8\x27\xbf\xa9\xea\x2f\xbf\xa9\xec\x37\xbf\xa9\xee\x3f\xbf\xa9\xf0\x47\xbf\xa9\xf2\x4f\xbf\xa9\xf4\x57\xbf\xa9\xf6\x5f\xbf\xa9\xf8\x67\xbf\xa9\xfa\x6f\xbf\xa9\xfc\x77\xbf\xa9\xfe\x0f\x1f\xf8";
+  constexpr char INST_PUSH_QRIGISTER[] = "\xe0\x07\xbf\xad\xe2\x0f\xbf\xad\xe4\x17\xbf\xad\xe6\x1f\xbf\xad\xe8\x27\xbf\xad\xea\x2f\xbf\xad\xec\x37\xbf\xad\xee\x3f\xbf\xad\xf0\x47\xbf\xad\xf2\x4f\xbf\xad\xf4\x57\xbf\xad\xf6\x5f\xbf\xad\xf8\x67\xbf\xad\xfa\x6f\xbf\xad\xfc\x77\xbf\xad\xfe\x7f\xbf\xad";
+  constexpr char INST_PUSH_FPRIGISTER[] = "\x00\x44\x3b\xd5\x21\x44\x3b\xd5\xe0\x0f\x1f\xf8\xe1\x0f\x1f\xf8";
+  constexpr char INST_MOV_FP_SP[] = "\xfd\x03\x00\x91";
+  constexpr char INST_SUB_SP_0x1000[] = "\xff\x07\x40\xd1";
 
 
   // safe all callee-saved registers (according to System V amd64 ABI)
-  AddInstructionToCodePage(codepage_no, INST_PUSH_RBX_RSP_RBP,
-                                                 3);
-  AddInstructionToCodePage(codepage_no, INST_PUSH_R12_R13_R14_R15,
-                                          8);
-
-  // save MXCSR register (misconfigured MXCSR can lead to floating point exceptions)
-  AddInstructionToCodePage(codepage_no, INST_SUB_RSP_0x8,
-                                          4);
-  AddInstructionToCodePage(codepage_no, INST_STMXCSR_RSP,
-                                          4);
-
-  // save x87 FPU control word (according to System V amd64 ABI)
-  AddInstructionToCodePage(codepage_no, INST_SUB_RSP_0x8,
-                                          4);
-  AddInstructionToCodePage(codepage_no, INST_FSTCW_RSP,
-                                          4);
+  AddInstructionToCodePage(codepage_no, INST_PUSH_XRIGISTER, sizeof(INST_PUSH_XRIGISTER));
+  AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_QRIGISTER));
+  AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_FPRIGISTER));
 
   // save stackpointer in RBP (in case some instruction changes the RSP value)
-  AddInstructionToCodePage(codepage_no, INST_MOV_RBP_RSP, 3);
+  AddInstructionToCodePage(codepage_no, INST_MOV_FP_SP, 3);
 
   // create room on stack that is big enough in case some instructions trashes stack values
   // (e.g. PUSH/POP)
-  AddInstructionToCodePage(codepage_no, INST_SUB_RSP_0x1000, 7);
+  AddInstructionToCodePage(codepage_no, INST_SUB_SP_0x1000, sizeof(INST_SUB_SP_0x1000));
 
   // initialize registers R8, RAX, RDI, RSI, RDX and XMM0 to point to memory locations
   // NOTE: this must match the memory registers in the code generation
   // last 4 bytes encode the immediate in little endian
-  constexpr char INST_MOV_R8_0xffffffff[] = "\x49\xc7\xc0\xff\xff\xff\xff";
-  constexpr char INST_MOV_RAX_0xffffffff[] = "\x48\xc7\xc0\xff\xff\xff\xff";
-  constexpr char INST_MOV_RDI_0xffffffff[] = "\x48\xc7\xc7\xff\xff\xff\xff";
-  constexpr char INST_MOV_RSI_0xffffffff[] = "\x48\xc7\xc6\xff\xff\xff\xff";
-  constexpr char INST_MOV_RDX_0xffffffff[] = "\x48\xc7\xc2\xff\xff\xff\xff";
-  byte_array encoded_immediate = NumberToBytesLE(kMemoryBegin, 4);
-  constexpr char INST_MOVQ_XMM0_R8[] = "\x66\x49\x0f\x6e\xc0";
+  
+  constexpr char INST_MOV_X8_0xffffffff[] = "\xe8\x66\xa2\xd2";
+  constexpr char INST_MOV_X0_0xffffffff[] = "\xe0\x66\xa2\xd2";
+  constexpr char INST_MOV_X1_0xffffffff[] = "\xe1\x66\xa2\xd2";
+  constexpr char INST_MOV_X2_0xffffffff[] = "\xe2\x66\xa2\xd2";
+  constexpr char INST_MOV_X3_0xffffffff[] = "\xe3\x66\xa2\xd2";
+
+  constexpr char INST_FMOV_X8_X0[] = "\x00\x01\x67\x9e";
 
   // add only the first 3 instruction bytes and add the encoded address manually
-  AddInstructionToCodePage(codepage_no, INST_MOV_R8_0xffffffff, 3);
-  AddInstructionToCodePage(codepage_no, encoded_immediate);
+  AddInstructionToCodePage(codepage_no, INST_MOV_X8_0xffffffff, sizeof(INST_MOV_X8_0xffffffff));
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_RAX_0xffffffff, 3);
-  AddInstructionToCodePage(codepage_no, encoded_immediate);
+  AddInstructionToCodePage(codepage_no, INST_MOV_X0_0xffffffff, sizeof(INST_MOV_X0_0xffffffff));
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_RDI_0xffffffff, 3);
-  AddInstructionToCodePage(codepage_no, encoded_immediate);
+  AddInstructionToCodePage(codepage_no, INST_MOV_X1_0xffffffff, sizeof(INST_MOV_X1_0xffffffff));
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_RSI_0xffffffff, 3);
-  AddInstructionToCodePage(codepage_no, encoded_immediate);
+  AddInstructionToCodePage(codepage_no, INST_MOV_X2_0xffffffff, sizeof(INST_MOV_X2_0xffffffff));
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_RDX_0xffffffff, 3);
-  AddInstructionToCodePage(codepage_no, encoded_immediate);
+  AddInstructionToCodePage(codepage_no, INST_MOV_X3_0xffffffff, sizeof(INST_MOV_X3_0xffffffff));
 
-  AddInstructionToCodePage(codepage_no, INST_MOVQ_XMM0_R8, 5);
+  AddInstructionToCodePage(codepage_no, INST_FMOV_X8_X0, sizeof(INST_FMOV_X8_X0));
 }
 
 void Executor::AddEpilog(int codepage_no) {
@@ -522,10 +504,20 @@ void Executor::AddEpilog(int codepage_no) {
   AddInstructionToCodePage(codepage_no, INST_RET, 1);
 }
 
-void Executor::AddSerializeInstructionToCodePage(int codepage_no) {
+void Executor::AddSerializePrologToCodePage(int codepage_no) {
   // insert CPUID to serialize instruction stream
-  constexpr char INST_XOR_EAX_EAX_CPUID[] = "\x31\xc0\x0f\xa2";
-  AddInstructionToCodePage(codepage_no, INST_XOR_EAX_EAX_CPUID, 4);
+  constexpr char INST_DSB_ISH[] = "\x9f\x3b\x03\xd5";
+  constexpr char INST_ISB[] = "\xdf\x3f\x03\xd5";
+  AddInstructionToCodePage(codepage_no, INST_DSB_ISH, sizeof(INST_DSB_ISH));
+  AddInstructionToCodePage(codepage_no, INST_ISB, sizeof(INST_ISB));
+}
+
+void Executor::AddSerializeEpilogToCodePage(int codepage_no) {
+  // insert CPUID to serialize instruction stream
+  constexpr char INST_DSB_ISH[] = "\x9f\x3b\x03\xd5";
+  constexpr char INST_ISB[] = "\xdf\x3f\x03\xd5";
+  AddInstructionToCodePage(codepage_no, INST_ISB, sizeof(INST_ISB));
+  AddInstructionToCodePage(codepage_no, INST_DSB_ISH, sizeof(INST_DSB_ISH));
 }
 
 void Executor::AddTimerStartToCodePage(int codepage_no) {
@@ -536,14 +528,14 @@ void Executor::AddTimerStartToCodePage(int codepage_no) {
 
   AddInstructionToCodePage(codepage_no, INST_MFENCE, 3);
   AddInstructionToCodePage(codepage_no, INST_XOR_EAX_EAX_CPUID, 4);
-#if defined(INTEL)
-  constexpr char INST_RDTSC[] = "\x0f\x31";
-  AddInstructionToCodePage(codepage_no, INST_RDTSC, 2);
-#elif defined(AMD)
-  constexpr char INST_MOV_ECX_1_RDPRU[] = "\xb9\x01\x00\x00\x00\x0f\x01\xfd";
-  // for AMD we use RDPRU to read the APERF register which makes a more stable timer than RDTSC
-  AddInstructionToCodePage(codepage_no, INST_MOV_ECX_1_RDPRU, 8);
-#endif
+// #if defined(INTEL)
+//   constexpr char INST_RDTSC[] = "\x0f\x31";
+//   AddInstructionToCodePage(codepage_no, INST_RDTSC, 2);
+// #elif defined(AMD)
+//   constexpr char INST_MOV_ECX_1_RDPRU[] = "\xb9\x01\x00\x00\x00\x0f\x01\xfd";
+//   // for AMD we use RDPRU to read the APERF register which makes a more stable timer than RDTSC
+//   AddInstructionToCodePage(codepage_no, INST_MOV_ECX_1_RDPRU, 8);
+// #endif
   // move result to R10 s.t. we can use it later in AddTimerEndToCodePage
   AddInstructionToCodePage(codepage_no, INST_MOV_R10_RAX,3);
 }

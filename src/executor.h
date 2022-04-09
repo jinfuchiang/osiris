@@ -138,9 +138,13 @@ class Executor {
   /// \param codepage_no code page to use
   void InitializeCodePage(int codepage_no);
 
-  /// adds a serializing instruction to the page
+/// adds a serializing instruction prolog to the page
   /// \param codepage_no code page to use
-  void AddSerializeInstructionToCodePage(int codepage_no);
+  void AddSerializePrologToCodePage(int codepage_no);
+
+  /// adds a serializing instruction epilog to the page
+  /// \param codepage_no code page to use
+  void AddSerializeEpilogToCodePage(int codepage_no);
 
   /// thrashes registers RDX, RAX, R10
   /// \param codepage_no code page to use
