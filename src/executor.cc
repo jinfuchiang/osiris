@@ -272,7 +272,7 @@ void Executor::CreateTestrunCode(int codepage_no, const byte_array& first_sequen
 
   // prolog
   AddProlog(codepage_no);
-  AddSerializeInstructionToCodePage(codepage_no);
+  AddSerializePrologToCodePage(codepage_no);
 
   // first sequence
   // if we need more we also have to increase the guardian stack space
@@ -280,11 +280,13 @@ void Executor::CreateTestrunCode(int codepage_no, const byte_array& first_sequen
   for (int i = 0; i < first_sequence_executions_amount; i++) {
     AddInstructionToCodePage(codepage_no, first_sequence);
   }
-  AddSerializeInstructionToCodePage(codepage_no);
+  AddSerializeEpilogToCodePage(codepage_no);
+
+  AddSerializePrologToCodePage(codepage_no);
 
   // second sequence
   AddInstructionToCodePage(codepage_no, second_sequence);
-  AddSerializeInstructionToCodePage(codepage_no);
+  AddSerializeEpilogToCodePage(codepage_no);
 
   // time measurement sequence
   AddTimerStartToCodePage(codepage_no);
@@ -320,7 +322,7 @@ void Executor::CreateSpeculativeTriggerTestrunCode(int codepage_no,
 
   // prolog
   AddProlog(codepage_no);
-  AddSerializeInstructionToCodePage(codepage_no);
+  AddSerializePrologToCodePage(codepage_no);
 
   // reset microarchitectural state sequence
   // if the number is higher we need to make sure that we have enough "unimportet guardian" stack space
@@ -328,7 +330,7 @@ void Executor::CreateSpeculativeTriggerTestrunCode(int codepage_no,
   for (int i = 0; i < reset_executions_amount; i++) {
     AddInstructionToCodePage(codepage_no, reset_sequence);
   }
-  AddSerializeInstructionToCodePage(codepage_no);
+  AddSerializeEpilogToCodePage(codepage_no);
 
 
   //
@@ -521,45 +523,19 @@ void Executor::AddSerializeEpilogToCodePage(int codepage_no) {
 }
 
 void Executor::AddTimerStartToCodePage(int codepage_no) {
-  constexpr char INST_MFENCE[] = "\x0f\xae\xf0";
-  constexpr char INST_XOR_EAX_EAX_CPUID[] = "\x31\xc0\x0f\xa2";
-  // note that we can use R10 as it is caller-saved
-  constexpr char INST_MOV_R10_RAX[] = "\x49\x89\xc2";
-
-  AddInstructionToCodePage(codepage_no, INST_MFENCE, 3);
-  AddInstructionToCodePage(codepage_no, INST_XOR_EAX_EAX_CPUID, 4);
-// #if defined(INTEL)
-//   constexpr char INST_RDTSC[] = "\x0f\x31";
-//   AddInstructionToCodePage(codepage_no, INST_RDTSC, 2);
-// #elif defined(AMD)
-//   constexpr char INST_MOV_ECX_1_RDPRU[] = "\xb9\x01\x00\x00\x00\x0f\x01\xfd";
-//   // for AMD we use RDPRU to read the APERF register which makes a more stable timer than RDTSC
-//   AddInstructionToCodePage(codepage_no, INST_MOV_ECX_1_RDPRU, 8);
-// #endif
+  AddSerializePrologToCodePage(codepage_no);
+  constexpr char INST_MRS_X10_PMCCNTR_EL0[] = "\x0a\x9d\x3b\xd5";
   // move result to R10 s.t. we can use it later in AddTimerEndToCodePage
-  AddInstructionToCodePage(codepage_no, INST_MOV_R10_RAX,3);
+  AddInstructionToCodePage(codepage_no, INST_MRS_X10_PMCCNTR_EL0, sizeof(INST_MRS_X10_PMCCNTR_EL0));
 }
 
 void Executor::AddTimerEndToCodePage(int codepage_no) {
-  constexpr char INST_XOR_EAX_EAX_CPUID[] = "\x31\xc0\x0f\xa2";
-  constexpr char INST_SUB_RAX_R10[] = "\x4c\x29\xd0";
-  // note that we can use R11 as it is caller-saved
-  constexpr char INST_MOV_R11_RAX[] = "\x49\x89\xc3";
+  constexpr char INST_MRS_X11_PMCCNTR_EL0[] = "\x0b\x9d\x3b\xd5";
+  constexpr char INST_SUB_X11_X11_X10[] = "\x6b\x01\x0a\xcb";
 
-#if defined(INTEL)
-  constexpr char INST_RDTSCP[] = "\x0f\x01\xf9";
-  AddInstructionToCodePage(codepage_no, INST_RDTSCP, 3);
-#elif defined(AMD)
-  // for AMD we use RDPRU to read the APERF register which makes a more stable timer than RDTSC
-  constexpr char INST_MFENCE[] = "\x0f\xae\xf0";
-  constexpr char INST_MOV_ECX_1_RDPRU[] = "\xb9\x01\x00\x00\x00\x0f\x01\xfd";
-  AddInstructionToCodePage(codepage_no, INST_MFENCE, 3);
-  AddInstructionToCodePage(codepage_no, INST_XOR_EAX_EAX_CPUID, 4);
-  AddInstructionToCodePage(codepage_no, INST_MOV_ECX_1_RDPRU, 8);
-#endif
-  AddInstructionToCodePage(codepage_no, INST_SUB_RAX_R10, 3);
-  AddInstructionToCodePage(codepage_no, INST_MOV_R11_RAX, 3);
-  AddInstructionToCodePage(codepage_no, INST_XOR_EAX_EAX_CPUID, 4);
+  AddInstructionToCodePage(codepage_no, INST_MRS_X11_PMCCNTR_EL0, sizeof(INST_MRS_X11_PMCCNTR_EL0));
+  AddSerializeEpilogToCodePage(codepage_no);
+  AddInstructionToCodePage(codepage_no, INST_SUB_X11_X11_X10, sizeof(INST_SUB_X11_X11_X10));
 }
 
 void Executor::AddInstructionToCodePage(int codepage_no,
@@ -604,10 +580,9 @@ void Executor::AddInstructionToCodePage(int codepage_no,
 }
 
 void Executor::MakeTimerResultReturnValue(int codepage_no) {
-  constexpr char MOV_RAX_R11[] = "\x4c\x89\xd8";
-  assert(code_pages_last_written_index_[codepage_no] + 3 < kPagesize);
+  constexpr char MOV_X0_X11[] = "\xe0\x03\x0b\xaa";
 
-  AddInstructionToCodePage(codepage_no, MOV_RAX_R11, 3);
+  AddInstructionToCodePage(codepage_no, MOV_X0_X11, sizeof(MOV_X0_X11));
 }
 
 byte_array Executor::CreateSequenceOfNOPs(size_t length) {
