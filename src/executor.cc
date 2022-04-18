@@ -437,16 +437,16 @@ void Executor::AddProlog(int codepage_no) {
 
 
   // safe all callee-saved registers (according to System V amd64 ABI)
-  AddInstructionToCodePage(codepage_no, INST_PUSH_XRIGISTER, sizeof(INST_PUSH_XRIGISTER));
-  AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_QRIGISTER));
-  AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_FPRIGISTER));
+  AddInstructionToCodePage(codepage_no, INST_PUSH_XRIGISTER, sizeof(INST_PUSH_XRIGISTER)-1);
+  AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_QRIGISTER)-1);
+  AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_FPRIGISTER)-1);
 
   // save stackpointer in RBP (in case some instruction changes the RSP value)
   AddInstructionToCodePage(codepage_no, INST_MOV_FP_SP, 3);
 
   // create room on stack that is big enough in case some instructions trashes stack values
   // (e.g. PUSH/POP)
-  AddInstructionToCodePage(codepage_no, INST_SUB_SP_0x1000, sizeof(INST_SUB_SP_0x1000));
+  AddInstructionToCodePage(codepage_no, INST_SUB_SP_0x1000, sizeof(INST_SUB_SP_0x1000)-1);
 
   // initialize registers R8, RAX, RDI, RSI, RDX and XMM0 to point to memory locations
   // NOTE: this must match the memory registers in the code generation
@@ -461,17 +461,17 @@ void Executor::AddProlog(int codepage_no) {
   constexpr char INST_FMOV_X8_X0[] = "\x00\x01\x67\x9e";
 
   // add only the first 3 instruction bytes and add the encoded address manually
-  AddInstructionToCodePage(codepage_no, INST_MOV_X8_0xffffffff, sizeof(INST_MOV_X8_0xffffffff));
+  AddInstructionToCodePage(codepage_no, INST_MOV_X8_0xffffffff, sizeof(INST_MOV_X8_0xffffffff)-1);
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_X0_0xffffffff, sizeof(INST_MOV_X0_0xffffffff));
+  AddInstructionToCodePage(codepage_no, INST_MOV_X0_0xffffffff, sizeof(INST_MOV_X0_0xffffffff)-1);
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_X1_0xffffffff, sizeof(INST_MOV_X1_0xffffffff));
+  AddInstructionToCodePage(codepage_no, INST_MOV_X1_0xffffffff, sizeof(INST_MOV_X1_0xffffffff)-1);
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_X2_0xffffffff, sizeof(INST_MOV_X2_0xffffffff));
+  AddInstructionToCodePage(codepage_no, INST_MOV_X2_0xffffffff, sizeof(INST_MOV_X2_0xffffffff)-1);
 
-  AddInstructionToCodePage(codepage_no, INST_MOV_X3_0xffffffff, sizeof(INST_MOV_X3_0xffffffff));
+  AddInstructionToCodePage(codepage_no, INST_MOV_X3_0xffffffff, sizeof(INST_MOV_X3_0xffffffff)-1);
 
-  AddInstructionToCodePage(codepage_no, INST_FMOV_X8_X0, sizeof(INST_FMOV_X8_X0));
+  AddInstructionToCodePage(codepage_no, INST_FMOV_X8_X0, sizeof(INST_FMOV_X8_X0)-1);
 }
 
 void Executor::AddEpilog(int codepage_no) {
@@ -510,32 +510,32 @@ void Executor::AddSerializePrologToCodePage(int codepage_no) {
   // insert CPUID to serialize instruction stream
   constexpr char INST_DSB_ISH[] = "\x9f\x3b\x03\xd5";
   constexpr char INST_ISB[] = "\xdf\x3f\x03\xd5";
-  AddInstructionToCodePage(codepage_no, INST_DSB_ISH, sizeof(INST_DSB_ISH));
-  AddInstructionToCodePage(codepage_no, INST_ISB, sizeof(INST_ISB));
+  AddInstructionToCodePage(codepage_no, INST_DSB_ISH, sizeof(INST_DSB_ISH)-1);
+  AddInstructionToCodePage(codepage_no, INST_ISB, sizeof(INST_ISB)-1);
 }
 
 void Executor::AddSerializeEpilogToCodePage(int codepage_no) {
   // insert CPUID to serialize instruction stream
   constexpr char INST_DSB_ISH[] = "\x9f\x3b\x03\xd5";
   constexpr char INST_ISB[] = "\xdf\x3f\x03\xd5";
-  AddInstructionToCodePage(codepage_no, INST_ISB, sizeof(INST_ISB));
-  AddInstructionToCodePage(codepage_no, INST_DSB_ISH, sizeof(INST_DSB_ISH));
+  AddInstructionToCodePage(codepage_no, INST_ISB, sizeof(INST_ISB)-1);
+  AddInstructionToCodePage(codepage_no, INST_DSB_ISH, sizeof(INST_DSB_ISH)-1);
 }
 
 void Executor::AddTimerStartToCodePage(int codepage_no) {
   AddSerializePrologToCodePage(codepage_no);
   constexpr char INST_MRS_X10_PMCCNTR_EL0[] = "\x0a\x9d\x3b\xd5";
   // move result to R10 s.t. we can use it later in AddTimerEndToCodePage
-  AddInstructionToCodePage(codepage_no, INST_MRS_X10_PMCCNTR_EL0, sizeof(INST_MRS_X10_PMCCNTR_EL0));
+  AddInstructionToCodePage(codepage_no, INST_MRS_X10_PMCCNTR_EL0, sizeof(INST_MRS_X10_PMCCNTR_EL0)-1);
 }
 
 void Executor::AddTimerEndToCodePage(int codepage_no) {
   constexpr char INST_MRS_X11_PMCCNTR_EL0[] = "\x0b\x9d\x3b\xd5";
   constexpr char INST_SUB_X11_X11_X10[] = "\x6b\x01\x0a\xcb";
 
-  AddInstructionToCodePage(codepage_no, INST_MRS_X11_PMCCNTR_EL0, sizeof(INST_MRS_X11_PMCCNTR_EL0));
+  AddInstructionToCodePage(codepage_no, INST_MRS_X11_PMCCNTR_EL0, sizeof(INST_MRS_X11_PMCCNTR_EL0)-1);
   AddSerializeEpilogToCodePage(codepage_no);
-  AddInstructionToCodePage(codepage_no, INST_SUB_X11_X11_X10, sizeof(INST_SUB_X11_X11_X10));
+  AddInstructionToCodePage(codepage_no, INST_SUB_X11_X11_X10, sizeof(INST_SUB_X11_X11_X10)-1);
 }
 
 void Executor::AddInstructionToCodePage(int codepage_no,
@@ -582,7 +582,7 @@ void Executor::AddInstructionToCodePage(int codepage_no,
 void Executor::MakeTimerResultReturnValue(int codepage_no) {
   constexpr char MOV_X0_X11[] = "\xe0\x03\x0b\xaa";
 
-  AddInstructionToCodePage(codepage_no, MOV_X0_X11, sizeof(MOV_X0_X11));
+  AddInstructionToCodePage(codepage_no, MOV_X0_X11, sizeof(MOV_X0_X11)-1);
 }
 
 byte_array Executor::CreateSequenceOfNOPs(size_t length) {
