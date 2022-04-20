@@ -427,6 +427,7 @@ void Executor::InitializeCodePage(int codepage_no) {
   code_pages_last_written_index_[codepage_no] = 0;
 }
 
+// Ref: https://stackoverflow.com/questions/62812383/most-effient-way-to-push-all-registers-to-stack-in-arm64
 void Executor::AddProlog(int codepage_no) {
   // NOTE: everything in this function must be mirrored by AddEpilog
   constexpr char INST_PUSH_XRIGISTER[] = "\xe0\x07\xbf\xa9\xe2\x0f\xbf\xa9\xe4\x17\xbf\xa9\xe6\x1f\xbf\xa9\xe8\x27\xbf\xa9\xea\x2f\xbf\xa9\xec\x37\xbf\xa9\xee\x3f\xbf\xa9\xf0\x47\xbf\xa9\xf2\x4f\xbf\xa9\xf4\x57\xbf\xa9\xf6\x5f\xbf\xa9\xf8\x67\xbf\xa9\xfa\x6f\xbf\xa9\xfc\x77\xbf\xa9\xfe\x0f\x1f\xf8";
@@ -439,16 +440,16 @@ void Executor::AddProlog(int codepage_no) {
   // safe all callee-saved registers (according to System V amd64 ABI)
   AddInstructionToCodePage(codepage_no, INST_PUSH_XRIGISTER, sizeof(INST_PUSH_XRIGISTER)-1);
   AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_QRIGISTER)-1);
-  AddInstructionToCodePage(codepage_no, INST_PUSH_QRIGISTER, sizeof(INST_PUSH_FPRIGISTER)-1);
+  AddInstructionToCodePage(codepage_no, INST_PUSH_FPRIGISTER, sizeof(INST_PUSH_FPRIGISTER)-1);
 
-  // save stackpointer in RBP (in case some instruction changes the RSP value)
-  AddInstructionToCodePage(codepage_no, INST_MOV_FP_SP, 3);
+  // save stackpointer in FP (in case some instruction changes the FP value)
+  AddInstructionToCodePage(codepage_no, INST_MOV_FP_SP, sizeof(INST_MOV_FP_SP)-1);
 
   // create room on stack that is big enough in case some instructions trashes stack values
   // (e.g. PUSH/POP)
   AddInstructionToCodePage(codepage_no, INST_SUB_SP_0x1000, sizeof(INST_SUB_SP_0x1000)-1);
 
-  // initialize registers R8, RAX, RDI, RSI, RDX and XMM0 to point to memory locations
+  // initialize registers R8, RAX, RDI, RSI, RDX anzd XMM0 to point to memory locations
   // NOTE: this must match the memory registers in the code generation
   // last 4 bytes encode the immediate in little endian
   
@@ -474,36 +475,30 @@ void Executor::AddProlog(int codepage_no) {
   AddInstructionToCodePage(codepage_no, INST_FMOV_X8_X0, sizeof(INST_FMOV_X8_X0)-1);
 }
 
+// Ref: https://stackoverflow.com/questions/62812383/most-effient-way-to-push-all-registers-to-stack-in-arm64
 void Executor::AddEpilog(int codepage_no) {
   // NOTE: everything in this function must be mirrored by AddProlog
-  constexpr char INST_CLD[] = "\xfc";
-  constexpr char INST_POP_R15_R14_R13_R12[] = "\x41\x5f\x41\x5e\x41\x5d\x41\x5c";
-  constexpr char INST_POP_RBP_RSP_RBX[] = "\x5d\x5c\x5b";
-  constexpr char INST_MOV_RSP_RBP[] = "\x48\x89\xec";
-  constexpr char INST_RET[] = "\xc3";
-  constexpr char INST_ADD_RSP_0x8[] = "\x48\x83\xc4\x08";
-  constexpr char INST_LDMXCSR_RSP[] = "\x0f\xae\x14\x24";
-  constexpr char INST_FLDCW_RSP[] = "\xd9\x2c\x24";
-
+  constexpr char INST_MOV_SP_FP[] = "\xbf\x03\x00\x91";
+  constexpr char INST_POP_FPREGISTER[] = "\xe0\x07\x41\xf8\xe1\x07\x41\xf8\x00\x44\x1b\xd5\x21\x44\x1b\xd5";
+  constexpr char INST_POP_QREGISTER[] = "\xfe\x7f\xc1\xac\xfc\x77\xc1\xac\xfa\x6f\xc1\xac\xf8\x67\xc1\xac\xf6\x5f\xc1\xac\xf4\x57\xc1\xac\xf2\x4f\xc1\xac\xf0\x47\xc1\xac\xee\x3f\xc1\xac\xec\x37\xc1\xac\xea\x2f\xc1\xac\xe8\x27\xc1\xac\xe6\x1f\xc1\xac\xe4\x17\xc1\xac\xe2\x0f\xc1\xac\xe0\x07\xc1\xac";
+  constexpr char INST_POP_XREGISTER[] = "\xfe\x07\x41\xf8\xfc\x77\xc1\xa8\xfa\x6f\xc1\xa8\xf8\x67\xc1\xa8\xf6\x5f\xc1\xa8\xf4\x57\xc1\xa8\xf2\x4f\xc1\xa8\xf0\x47\xc1\xa8\xee\x3f\xc1\xa8\xec\x37\xc1\xa8\xea\x2f\xc1\xa8\xe8\x27\xc1\xa8\xe6\x1f\xc1\xa8\xe4\x17\xc1\xa8\xe2\x0f\xc1\xa8\xe0\x07\xc1\xa8";
+  constexpr char INST_RET[] = "\xc0\x03\x5f\xd6";
   // System-V abi specifies that DF is always zero upon function return
-  AddInstructionToCodePage(codepage_no, INST_CLD, 1);
+  // AddInstructionToCodePage(codepage_no, INST_CLD, 1);
   // restore stack
-  AddInstructionToCodePage(codepage_no, INST_MOV_RSP_RBP, 3);
+  AddInstructionToCodePage(codepage_no, INST_MOV_SP_FP, sizeof(INST_MOV_SP_FP)-1);
 
-  // restore x87 FPU control word
-  AddInstructionToCodePage(codepage_no, INST_FLDCW_RSP, 3);
-  AddInstructionToCodePage(codepage_no, INST_ADD_RSP_0x8, 4);
+  // restore FPCR and FPSR
+  AddInstructionToCodePage(codepage_no, INST_POP_FPREGISTER, sizeof(INST_POP_FPREGISTER)-1);
 
-  // restore MXCSR register
-  AddInstructionToCodePage(codepage_no, INST_LDMXCSR_RSP, 4);
-  AddInstructionToCodePage(codepage_no, INST_ADD_RSP_0x8, 4);
+  // restore QREGISTER register
+  AddInstructionToCodePage(codepage_no, INST_POP_QREGISTER, sizeof(INST_POP_QREGISTER)-1);
 
   // restore registers
-  AddInstructionToCodePage(codepage_no, INST_POP_R15_R14_R13_R12, 8);
-  AddInstructionToCodePage(codepage_no, INST_POP_RBP_RSP_RBX, 3);
+  AddInstructionToCodePage(codepage_no, INST_POP_XREGISTER, sizeof(INST_POP_XREGISTER)-1);
 
   // insert return
-  AddInstructionToCodePage(codepage_no, INST_RET, 1);
+  AddInstructionToCodePage(codepage_no, INST_RET, sizeof(INST_RET)-1);
 }
 
 void Executor::AddSerializePrologToCodePage(int codepage_no) {
@@ -665,6 +660,7 @@ int Executor::ExecuteCodePage(void* codepage, uint64_t* cycles_elapsed) {
 
   if (!setjmp(fault_handler_jump_buf)) {
     // jump to codepage
+    __builtin___clear_cache(codepage, (char*)codepage+kPagesize);
     uint64_t cycle_diff = ((uint64_t(*)()) codepage)();
     // set return argument
     *cycles_elapsed = cycle_diff;

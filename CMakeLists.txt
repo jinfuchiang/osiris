@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.10)
 project(osiris)
 
 # set default build type to release if nothing else is specified
-set(default_build_type "Release")
+set(default_build_type "Debug")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     message(STATUS "Setting build type to '${default_build_type}' as none was specified.")
     # overwrite empty build type
