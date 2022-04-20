@@ -97,7 +97,7 @@ int main() {
   
   execution_code_pages_[0] = static_cast<char*>(mmap(nullptr,
                                                       kPagesize,
-                                                      PROT_READ | PROT_WRITE ,
+                                                      PROT_READ | PROT_WRITE | PROT_EXEC,
                                                       MAP_PRIVATE | MAP_ANONYMOUS,
                                                       -1,
                                                       0));
@@ -105,18 +105,15 @@ int main() {
     cout << ("Couldn't allocate memory for execution (exec memory). Aborting!\n");
     std::exit(1);
   }
-  AddTimerStartToCodePage(0);
-  AddLoop(0);
-  AddTimerEndToCodePage(0);
   
-  if(mprotect(execution_code_pages_[0], kPagesize, PROT_EXEC) == -1) {
-    cout << "Fail to mmap exec to data page" << endl;
-    return 0;
-  }
-
   long long last_du = 0;
   for(long long i = 1; i < 100000000000; i*=2) {  
       reset();
+      AddTimerStartToCodePage(0);
+      AddLoop(0);
+      AddTimerEndToCodePage(0);
+      __builtin___clear_cache(execution_code_pages_[0], execution_code_pages_[0]+kPagesize);
+
       auto f = (Time(*)(long long))execution_code_pages_[0];
       Time time = f(i);
       cout << i << ' ' << time.st << ' ' << time.ed << ' ' << time.du << ' ' << (last_du + i) - time.du << '\n'; 
